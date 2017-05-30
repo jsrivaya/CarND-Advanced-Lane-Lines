@@ -21,7 +21,7 @@ The goals / steps of this project are the following:
 [image3]: ./writeup_images/Gradients.png "Gradients"
 [image4]: ./writeup_images/HLSvsBinary.png "HLS channels vs HLS Binary channels"
 [image5]: ./writeup_images/Pipeline1.png "Pipeline"
-[image6]: ./writeup_images/BirdsEyeView.png "Road Transformed"
+[image6]: ./writeup_images/BirdsEyeView.png "Birds Eye View Tranform"
 [image7]: ./writeup_images/Pipeline.png "Polinomial fit"
 [image8]: ./writeup_images/deployBack.png "Deploy back into original image"
 [image9]: ./examples/color_fit_lines.jpg "Fit Visual"
@@ -102,6 +102,9 @@ This resulted in the following source and destination points:
 | 940,660       | 940,650       |
 | 705,480       | 940,60        |
 
+By selecting this points for the transform I can efficiently select a region of interest, removing a lot of noise from the image to process.
+
+![alt text][image6]
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
@@ -186,7 +189,37 @@ def deployBack(src_img, warp_img, Minv, left_fitx, right_fitx, ploty):
     return cv2.addWeighted(getUndistortImage(src_img), 1, newwarp, 0.3, 0)
 ```
 
-![alt text][image6]
+![alt text][image8]
+
+An extra method is implemented to simplify the video processing. In such method I add the curvature and off center information to the frame. Also I can select different pipeline filters too for the image processing.
+
+```python
+def process_image(img):
+    # NOTE: The output you return should be a color image (3 channel) for processing video below
+    # 1) Birds Eye View
+    birds_img, M, Minv = birds_eye_view(img)
+    # 2) Treat image
+    #pipeline_image = pipeline(img, s_thresh=(90, 250), sx_thresh=(50, 100))
+    #gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # appliying perspective matrix
+    #warp_img = cv2.warpPerspective(getUndistortImage(pipeline_image), perspective_M, gray.shape[::-1], flags=cv2.INTER_LANCZOS4)
+    warp_img = getHLS(birds_img, 'SB', (90,250))
+    # 2) Find Lines
+    out_img, left_fit, right_fit, ploty, left_fitx, right_fitx = line.findLines(warp_img)
+    # 3) Flip Back to original Image
+    result = deployBack(img, warp_img, Minv, left_fitx, right_fitx, ploty)
+    # Put curve info on the imager
+    realWorldCurveLeft, realWorldCurveRight = line.getRealWorldCurve()
+    text = "Radius of Curvature = {:.2f}(m)".format(realWorldCurveLeft)
+    cv2.putText(result, text, (10,50), cv2.FONT_HERSHEY_PLAIN, fontScale=3, thickness=2, color=(255, 255, 255))
+    off = line.get_off_center_meters()
+    if off < 0:
+        text = "Vehicule is {:.2f}(m) left of the center".format(abs(off))
+    else:
+        text = "Vehicule is {:.2f}(m) right of the center".format(abs(off))
+    cv2.putText(result, text, (10,90), cv2.FONT_HERSHEY_PLAIN, fontScale=3, thickness=2, color=(255, 255, 255))
+    return result
+```
 
 ---
 
@@ -194,7 +227,7 @@ def deployBack(src_img, warp_img, Minv, left_fitx, right_fitx, ploty):
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result](./project_video_processed.mp4)
 
 ---
 
@@ -202,4 +235,6 @@ Here's a [link to my video result](./project_video.mp4)
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.
+
+The approach I followed was to create an initial pipeline where I could complete every single step with one of the example images. I did try a lot of different combinations and images to calculate the best results for the treating the frame. I found out that the combination of **channel S in binary**, a **8 points interpolation** during the birds eye view and the **usage of 10 frames** to find lanes made the greates improvements. I wanted to include the curvature calculations for lines validation but I am running out of time. I would stimate an curvature error and discard frames where the detected curvature is out of range. At the same time, I believe that an extra color filter could help in harder frames. This is specially important during very winding roads since the 10 frames calculation wouldn't be that useful. We would probably have to reduce those 10 frames to 5 or less.
